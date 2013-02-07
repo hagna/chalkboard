@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -27,27 +28,36 @@ type Store interface {
 type MemStore struct {
 	stickies map[int]Sticky
 	Id       int
+	sync.RWMutex
 }
 
 func (m *MemStore) Itersticky(fn func(Sticky)) {
+	m.RLock()
 	for _, v := range m.stickies {
 		fn(v)
 	}
+	m.RUnlock()
 }
 
 func (m *MemStore) AddSticky(a Sticky) Sticky {
+	m.Lock()
 	a.Id = m.Id
 	m.stickies[a.Id] = a
 	m.Id += 1
-	return m.stickies[a.Id]
+	m.Unlock()
+	return a
 }
 
 func (m *MemStore) RmSticky(id int) {
+	m.Lock()
 	delete(m.stickies, id)
+	m.Unlock()
 }
 
 func (m *MemStore) UpdateSticky(a Sticky) {
+	m.Lock()
 	m.stickies[a.Id] = a
+	m.Unlock()
 }
 
 type ResponseWriter struct {
@@ -209,7 +219,7 @@ func main() {
 
 		http.HandleFunc(file, f(cwd+file))
 	}
-	store := &MemStore{make(map[int]Sticky), 1}
+	store := &MemStore{make(map[int]Sticky), 1, sync.RWMutex{}}
 	e := NewEv(store)
 	go e.work()
 	http.HandleFunc("/", chalkboard(e))
